@@ -146,7 +146,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
 
         Checkbox("Enable", Settings.Enable);
         Checkbox("Enable overlay", Settings.OverlayEnabled);
-        Checkbox("Highlight selected generated map stats", Settings.HighlightImportantAffixes);
+        Checkbox("Highlight selected map stats", Settings.HighlightImportantAffixes);
         ImGui.Indent();
         DrawGeneratedStatSetting("Monster Effectiveness (E)", Settings.HighlightMonsterEffectiveness, Settings.MonsterEffectivenessColor);
         DrawGeneratedStatSetting("Item Rarity (R)", Settings.HighlightItemRarity, Settings.ItemRarityColor);
@@ -156,7 +156,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         ImGui.Unindent();
         Checkbox("Show affix-count badge", Settings.ShowAffixCountBadge);
         ImGui.Indent();
-        DrawColorEdit("Count badge color", Settings.AffixCountBadgeColor.Value, value => Settings.AffixCountBadgeColor.Value = value);
+        DrawColorEdit("Badge color##AffixCount", Settings.AffixCountBadgeColor.Value, value => Settings.AffixCountBadgeColor.Value = value);
         ImGui.Unindent();
         Checkbox("Show important-affix badges", Settings.ShowImportantAffixBadges);
         Checkbox("Hide overlay when item tooltip covers item", Settings.HideWhenTooltipOverItem);
