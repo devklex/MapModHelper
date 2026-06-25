@@ -13,8 +13,7 @@ internal sealed class MapScorer
     public MapScore Score(MapItemSnapshot item, MapModHelperSettings settings)
     {
         var affixCount = item.ExplicitAffixCount > 0 ? item.ExplicitAffixCount : CountFallbackAffixLines(item.ModLines);
-        var showGeneratedStatBadges = settings.HighlightImportantAffixes.Value && settings.ShowImportantAffixBadges.Value;
-        var displayedStatDefinitions = showGeneratedStatBadges
+        var displayedStatDefinitions = settings.HighlightImportantAffixes.Value
             ? GetEnabledImportantStats(settings).ToList()
             : [];
         var displayedStatIds = displayedStatDefinitions

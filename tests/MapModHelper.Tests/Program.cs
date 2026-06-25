@@ -75,8 +75,7 @@ static void AssertHiddenBadgesDoNotCreateVisibleMatches()
 {
     var settings = new MapModHelperSettings();
     settings.ShowAffixCountBadge.Value = false;
-    settings.HighlightImportantAffixes.Value = true;
-    settings.ShowImportantAffixBadges.Value = false;
+    settings.HighlightImportantAffixes.Value = false;
     settings.EnableAffixGroups.Value = false;
     settings.EnableBorderRules.Value = false;
 
@@ -97,8 +96,7 @@ static void AssertBorderRulesCanUseHiddenGeneratedStats()
 {
     var settings = new MapModHelperSettings();
     settings.ShowAffixCountBadge.Value = false;
-    settings.HighlightImportantAffixes.Value = true;
-    settings.ShowImportantAffixBadges.Value = false;
+    settings.HighlightImportantAffixes.Value = false;
     settings.EnableAffixGroups.Value = false;
     settings.EnableBorderRules.Value = true;
     settings.BorderRules =

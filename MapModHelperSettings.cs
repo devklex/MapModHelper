@@ -19,7 +19,6 @@ public sealed class MapModHelperSettings : ISettings
     public ToggleNode HighlightMonsterRarity { get; set; } = new(false);
     public ToggleNode HighlightWaystoneDropChance { get; set; } = new(false);
     public ToggleNode ShowAffixCountBadge { get; set; } = new(true);
-    public ToggleNode ShowImportantAffixBadges { get; set; } = new(true);
     public ToggleNode EnableBorderRules { get; set; } = new(true);
     public ToggleNode EnableAffixGroups { get; set; } = new(true);
     public ToggleNode ShowAffixGroupBadges { get; set; } = new(true);
