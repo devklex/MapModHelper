@@ -37,8 +37,11 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
     private long _lastPerformanceLogMs;
     private long _lastSampleLogMs;
     private long _lastMatchedLogMs;
+    private long _lastDiagnosticLogMs;
     private int _lastContextHash;
+    private int _suppressedDiagnosticCount;
     private string _lastPerformanceSummary = string.Empty;
+    private string _lastDiagnosticSummary = string.Empty;
     private int _lastVisibleItems;
     private int _lastKnownMaps;
     private int _lastMatchedMaps;
@@ -50,44 +53,65 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         MapAffixCatalog.Load(_mapStatData?.Affixes);
         DebugWindow.LogMsg("[MapModHelper] " + loadMessage, 5);
         _itemReader = new MapItemReader(GameController, _mapStatData);
+        _itemReader.DiagnosticLogger = LogDiagnostic;
         _scorer = new MapScorer();
         return base.Initialise();
     }
 
     public override void Tick()
     {
-        if (!Settings.Enable.Value)
+        try
         {
-            ClearRuntimeState();
-            return;
-        }
+            if (!Settings.Enable.Value)
+            {
+                ClearRuntimeState();
+                return;
+            }
 
-        if (!AnySupportedWindowVisible())
-        {
-            ClearRuntimeState();
-            return;
-        }
+            if (!AnySupportedWindowVisible())
+            {
+                ClearRuntimeState();
+                return;
+            }
 
-        var now = Environment.TickCount64;
-        var contextHash = _itemReader?.GetVisibleContextHash() ?? 0;
-        if (contextHash != _lastContextHash)
+            var now = Environment.TickCount64;
+            var contextHash = _itemReader?.GetVisibleContextHash() ?? 0;
+            if (contextHash != _lastContextHash)
+            {
+                _lastContextHash = contextHash;
+                ClearVisibleScanState();
+            }
+
+            if (now - _lastScanMs < Math.Max(100, Settings.ScanIntervalMs.Value))
+                return;
+
+            _lastScanMs = now;
+            ScanVisibleMaps();
+        }
+        catch (Exception ex)
         {
-            _lastContextHash = contextHash;
+            LogDiagnostic("Tick", ex);
             ClearVisibleScanState();
         }
-
-        if (now - _lastScanMs < Math.Max(100, Settings.ScanIntervalMs.Value))
-            return;
-
-        _lastScanMs = now;
-        ScanVisibleMaps();
     }
 
     public override void Render()
     {
+        try
+        {
+            RenderOverlay();
+        }
+        catch (Exception ex)
+        {
+            LogDiagnostic("Render", ex);
+            ClearVisibleScanState();
+        }
+    }
+
+    private void RenderOverlay()
+    {
         if (!Settings.Enable.Value || !Settings.OverlayEnabled.Value)
             return;
-
         if (!AnySupportedWindowVisible())
             return;
 
@@ -143,6 +167,8 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         ImGui.TextDisabled($"Last scan: visible items {_lastVisibleItems}, maps {_lastKnownMaps}, matched maps {_lastMatchedMaps}");
         if (!string.IsNullOrWhiteSpace(_lastPerformanceSummary))
             ImGui.TextDisabled(_lastPerformanceSummary);
+        if (!string.IsNullOrWhiteSpace(_lastDiagnosticSummary))
+            ImGui.TextDisabled(_lastDiagnosticSummary);
 
         Checkbox("Enable", Settings.Enable, "Master switch for the plugin.");
         Checkbox("Enable overlay", Settings.OverlayEnabled, "Draw MapModHelper highlights and badges. Scanning still stops when stash and inventory are closed.");
@@ -250,6 +276,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         Checkbox("Log matched maps", Settings.LogMatchedMaps);
         Checkbox("Log scanned map samples", Settings.LogScannedMapSamples);
         Checkbox("Log performance", Settings.LogPerformance);
+        Checkbox("Log scan/read exceptions", Settings.LogScanExceptions, "Use this while stress testing mass map slams. If a waystone changes while the plugin is reading it, the plugin logs a throttled diagnostic and skips that frame.");
 
         ImGui.Separator();
         if (ImGui.Button("Dump last hovered map stats"))
@@ -1276,6 +1303,25 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         DebugWindow.LogMsg("[MapModHelper perf] " + _lastPerformanceSummary, 3);
     }
 
+    private void LogDiagnostic(string context, Exception ex)
+    {
+        if (!Settings.LogScanExceptions.Value)
+            return;
+
+        var now = Environment.TickCount64;
+        if (now - _lastDiagnosticLogMs < 1000)
+        {
+            _suppressedDiagnosticCount++;
+            return;
+        }
+
+        var suppressed = _suppressedDiagnosticCount > 0 ? $" suppressed={_suppressedDiagnosticCount}" : string.Empty;
+        _suppressedDiagnosticCount = 0;
+        _lastDiagnosticLogMs = now;
+        _lastDiagnosticSummary = $"Last diagnostic: {context}: {ex.GetType().Name}: {ex.Message}";
+        DebugWindow.LogMsg($"[MapModHelper diagnostic] {context}: {ex.GetType().Name}: {ex.Message}{suppressed}", 8);
+    }
+
     private static string DescribeMapSample(MapItemSnapshot item, string status)
     {
         var mods = item.ModLines.Count == 0 ? "mods=none" : "mods=" + string.Join(" | ", item.ModLines.Take(8));
@@ -1295,6 +1341,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         _lastVisibleItems = 0;
         _lastKnownMaps = 0;
         _lastMatchedMaps = 0;
+        _lastDiagnosticSummary = string.Empty;
     }
 
     private void ClearVisibleScanState()

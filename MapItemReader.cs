@@ -25,6 +25,8 @@ internal sealed class MapItemReader
     private readonly MapStatData? _mapStatData;
     private readonly Dictionary<long, CachedMapData> _snapshotCache = new();
 
+    public Action<string, Exception>? DiagnosticLogger { get; set; }
+
     public MapItemReader(GameController gameController, MapStatData? mapStatData)
     {
         _gameController = gameController;
@@ -38,19 +40,27 @@ internal sealed class MapItemReader
 
     public int GetVisibleContextHash()
     {
-        unchecked
+        try
         {
-            var ui = _gameController.Game.IngameState.IngameUi;
-            var hash = 17;
+            unchecked
+            {
+                var ui = _gameController.Game.IngameState.IngameUi;
+                var hash = 17;
 
-            if (ui.InventoryPanel?.IsVisible == true)
-                AddContext(ref hash, true, GetStableObjectHash(ui.InventoryPanel), GetNormalInventoryItemsHash(ui.InventoryPanel[InventoryIndex.PlayerInventory]?.VisibleInventoryItems));
-            if (ui.StashElement?.IsVisible == true)
-                AddContext(ref hash, true, GetInventoryContextHash(ui.StashElement.VisibleStash, ui.StashElement), GetInventoryContentHash(ui.StashElement.VisibleStash));
-            if (ui.GuildStashElement?.IsVisible == true)
-                AddContext(ref hash, true, GetInventoryContextHash(ui.GuildStashElement.VisibleStash, ui.GuildStashElement), GetInventoryContentHash(ui.GuildStashElement.VisibleStash));
+                if (ui.InventoryPanel?.IsVisible == true)
+                    AddContext(ref hash, true, GetStableObjectHash(ui.InventoryPanel), GetNormalInventoryItemsHash(ui.InventoryPanel[InventoryIndex.PlayerInventory]?.VisibleInventoryItems));
+                if (ui.StashElement?.IsVisible == true)
+                    AddContext(ref hash, true, GetInventoryContextHash(ui.StashElement.VisibleStash, ui.StashElement), GetInventoryContentHash(ui.StashElement.VisibleStash));
+                if (ui.GuildStashElement?.IsVisible == true)
+                    AddContext(ref hash, true, GetInventoryContextHash(ui.GuildStashElement.VisibleStash, ui.GuildStashElement), GetInventoryContentHash(ui.GuildStashElement.VisibleStash));
 
-            return hash;
+                return hash;
+            }
+        }
+        catch (Exception ex)
+        {
+            LogDiagnostic("context hash", ex);
+            return 0;
         }
     }
 
@@ -77,8 +87,9 @@ internal sealed class MapItemReader
             snapshot.TooltipProperties = ReadTooltipProperties(uiHover);
             return snapshot;
         }
-        catch
+        catch (Exception ex)
         {
+            LogDiagnostic("hovered item read", ex);
             return null;
         }
     }
@@ -96,12 +107,12 @@ internal sealed class MapItemReader
             {
                 AddItems(items, inventory[InventoryIndex.PlayerInventory].VisibleInventoryItems, "inventory-visible");
             }
-            catch { }
+            catch (Exception ex) { LogDiagnostic("player inventory visible list", ex); }
 
             if (items.Count == 0)
                 AddItems(items, GetNormalInventoryItemsFromElementTree(inventory), "inventory-tree");
         }
-        catch { }
+        catch (Exception ex) { LogDiagnostic("player inventory read", ex); }
 
         return Deduplicate(items);
     }
@@ -121,15 +132,15 @@ internal sealed class MapItemReader
             {
                 AddInventoryItems(items, stash.VisibleStash, "stash-visible");
             }
-            catch { }
+            catch (Exception ex) { LogDiagnostic("stash visible inventory", ex); }
 
             try
             {
                 AddItems(items, GetNormalInventoryItemsFromElementTree(stash), "stash-tree");
             }
-            catch { }
+            catch (Exception ex) { LogDiagnostic("stash tree fallback", ex); }
         }
-        catch { }
+        catch (Exception ex) { LogDiagnostic("visible stash read", ex); }
 
         return Deduplicate(items);
     }
@@ -139,11 +150,25 @@ internal sealed class MapItemReader
         if (items == null)
             return;
 
-        foreach (var item in items)
+        try
         {
-            var snap = ReadInventoryItem(item, source);
-            if (snap != null)
-                output.Add(snap);
+            foreach (var item in items)
+            {
+                try
+                {
+                    var snap = ReadInventoryItem(item, source);
+                    if (snap != null)
+                        output.Add(snap);
+                }
+                catch (Exception ex)
+                {
+                    LogDiagnostic($"item read ({source})", ex);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogDiagnostic($"item enumeration ({source})", ex);
         }
     }
 
@@ -161,13 +186,13 @@ internal sealed class MapItemReader
                     AddItems(output, subInventory?.VisibleInventoryItems, source);
             }
         }
-        catch { }
+        catch (Exception ex) { LogDiagnostic($"subinventory read ({source})", ex); }
 
         try
         {
             AddItems(output, inventory.VisibleInventoryItems, source);
         }
-        catch { }
+        catch (Exception ex) { LogDiagnostic($"inventory visible list ({source})", ex); }
     }
 
     private static List<NormalInventoryItem> GetNormalInventoryItemsFromElementTree(Element root)
@@ -320,8 +345,9 @@ internal sealed class MapItemReader
                 GeneratedProperties = generatedProperties
             };
         }
-        catch
+        catch (Exception ex)
         {
+            LogDiagnostic($"inventory item read ({source})", ex);
             return null;
         }
     }
@@ -463,9 +489,16 @@ internal sealed class MapItemReader
         if (value is not IEnumerable enumerable)
             return result;
 
-        foreach (var entry in enumerable)
-            if (entry is ItemMod itemMod)
-                result.Add(itemMod);
+        try
+        {
+            foreach (var entry in enumerable)
+                if (entry is ItemMod itemMod)
+                    result.Add(itemMod);
+        }
+        catch
+        {
+            return result;
+        }
 
         return result;
     }
@@ -659,24 +692,28 @@ internal sealed class MapItemReader
         {
             var hash = 17;
             var count = 0;
-            foreach (var item in items)
+            try
             {
-                if (item?.Item?.IsValid != true || item.Item.Address == 0 || !IsVisibleOrUnknown(item))
-                    continue;
-
-                count++;
-                hash = hash * 31 + item.Item.Address.GetHashCode();
-                hash = hash * 31 + GetStableObjectHash(item);
-                try
+                foreach (var item in items)
                 {
-                    var rect = item.GetClientRectCache;
-                    hash = hash * 31 + MathF.Round(rect.X).GetHashCode();
-                    hash = hash * 31 + MathF.Round(rect.Y).GetHashCode();
-                    hash = hash * 31 + MathF.Round(rect.Width).GetHashCode();
-                    hash = hash * 31 + MathF.Round(rect.Height).GetHashCode();
+                    if (item?.Item?.IsValid != true || item.Item.Address == 0 || !IsVisibleOrUnknown(item))
+                        continue;
+
+                    count++;
+                    hash = hash * 31 + item.Item.Address.GetHashCode();
+                    hash = hash * 31 + GetStableObjectHash(item);
+                    try
+                    {
+                        var rect = item.GetClientRectCache;
+                        hash = hash * 31 + MathF.Round(rect.X).GetHashCode();
+                        hash = hash * 31 + MathF.Round(rect.Y).GetHashCode();
+                        hash = hash * 31 + MathF.Round(rect.Width).GetHashCode();
+                        hash = hash * 31 + MathF.Round(rect.Height).GetHashCode();
+                    }
+                    catch { }
                 }
-                catch { }
             }
+            catch { }
 
             return count == 0 ? 0 : hash;
         }
@@ -783,6 +820,11 @@ internal sealed class MapItemReader
         {
             return string.Empty;
         }
+    }
+
+    private void LogDiagnostic(string context, Exception ex)
+    {
+        DiagnosticLogger?.Invoke(context, ex);
     }
 }
 

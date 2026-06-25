@@ -26,6 +26,7 @@ public sealed class MapModHelperSettings : ISettings
     public ToggleNode LogMatchedMaps { get; set; } = new(false);
     public ToggleNode LogScannedMapSamples { get; set; } = new(false);
     public ToggleNode LogPerformance { get; set; } = new(false);
+    public ToggleNode LogScanExceptions { get; set; } = new(false);
 
     public RangeNode<int> ScanIntervalMs { get; set; } = new(650, 150, 2000);
     public RangeNode<int> TargetAffixCount { get; set; } = new(8, 0, 8);
