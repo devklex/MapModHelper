@@ -12,15 +12,16 @@ ExileCore2 plugin for highlighting Path of Exile 2 waystones in stash and invent
   - `P` Pack Size
   - `MR` Monster Rarity
   - `W` Waystone Drop Chance
-- Custom affix groups with selectable waystone affixes, per-group colors, and text or colored-block badges.
+- Custom affix groups with selectable waystone affixes and per-group colored text badges.
+- Custom border rules that can match the target affix count, generated map stats, affix groups, or combinations of those conditions.
 - Hover debug dumps for inspecting map components and parsed stats.
 
 ## Overlay Layout
 
 - Top-left badge: explicit affix count, shown when the waystone meets the configured affix-count target.
 - Top-right badges: selected generated map stats such as `E28` or `R42`.
-- Left-side badges or blocks: custom affix-group matches, colored by the group color.
-- Border color and thickness: driven by generated stat value tiers and the 8-affix highlight.
+- Left-side badges: custom affix-group matches, colored by the group color.
+- Border color and thickness: driven by the first matching border rule.
 
 This keeps fixed categories in fixed places so multiple active rules do not overwrite each other.
 

@@ -12,7 +12,6 @@ public sealed class MapModHelperSettings : ISettings
 {
     public ToggleNode Enable { get; set; } = new(true);
     public ToggleNode OverlayEnabled { get; set; } = new(true);
-    public ToggleNode HighlightEightAffixMaps { get; set; } = new(true);
     public ToggleNode HighlightImportantAffixes { get; set; } = new(true);
     public ToggleNode HighlightMonsterEffectiveness { get; set; } = new(true);
     public ToggleNode HighlightItemRarity { get; set; } = new(true);
@@ -21,6 +20,7 @@ public sealed class MapModHelperSettings : ISettings
     public ToggleNode HighlightWaystoneDropChance { get; set; } = new(false);
     public ToggleNode ShowAffixCountBadge { get; set; } = new(true);
     public ToggleNode ShowImportantAffixBadges { get; set; } = new(true);
+    public ToggleNode EnableBorderRules { get; set; } = new(true);
     public ToggleNode EnableAffixGroups { get; set; } = new(true);
     public ToggleNode ShowAffixGroupBadges { get; set; } = new(true);
     public ToggleNode HideWhenTooltipOverItem { get; set; } = new(true);
@@ -29,40 +29,46 @@ public sealed class MapModHelperSettings : ISettings
     public ToggleNode LogPerformance { get; set; } = new(false);
 
     public RangeNode<int> ScanIntervalMs { get; set; } = new(650, 150, 2000);
-    public RangeNode<int> TargetAffixCount { get; set; } = new(8, 4, 12);
-    public RangeNode<int> BlueMaxPercent { get; set; } = new(20, 1, 100);
-    public RangeNode<int> OrangeMaxPercent { get; set; } = new(28, 1, 100);
-    public RangeNode<int> RedMinPercent { get; set; } = new(29, 1, 100);
-    public RangeNode<int> DeepRedMinPercent { get; set; } = new(50, 1, 150);
-    public RangeNode<int> BaseBorderThickness { get; set; } = new(2, 1, 8);
-    public RangeNode<int> MaxBorderThickness { get; set; } = new(6, 1, 12);
-    public RangeNode<int> AffixGroupBadgeStyle { get; set; } = new((int)MapAffixGroupBadgeStyle.OneBlockPerGroup, 0, 2);
-    public RangeNode<int> AffixGroupMaxBlocks { get; set; } = new(6, 1, 16);
+    public RangeNode<int> TargetAffixCount { get; set; } = new(8, 0, 8);
+    public RangeNode<int> BorderThickness { get; set; } = new(3, 1, 12);
     public RangeNode<float> BadgeScale { get; set; } = new(0.9f, 0.5f, 1.8f);
 
     public ColorNode EightAffixColor { get; set; } = new(Color.DeepSkyBlue);
-    public ColorNode LowImportantColor { get; set; } = new(Color.DeepSkyBlue);
-    public ColorNode MediumImportantColor { get; set; } = new(Color.Orange);
-    public ColorNode HighImportantColor { get; set; } = new(Color.Red);
-    public ColorNode BestImportantColor { get; set; } = new(Color.Firebrick);
+    public ColorNode MonsterEffectivenessColor { get; set; } = new(Color.Red);
+    public ColorNode ItemRarityColor { get; set; } = new(Color.Orange);
+    public ColorNode MonsterPackSizeColor { get; set; } = new(Color.LimeGreen);
+    public ColorNode MonsterRarityColor { get; set; } = new(Color.DeepSkyBlue);
+    public ColorNode WaystoneDropChanceColor { get; set; } = new(Color.Gold);
     public ColorNode BadgeBackgroundColor { get; set; } = new(Color.FromArgb(220, 0, 0, 0));
     public ColorNode BadgeTextColor { get; set; } = new(Color.White);
 
     public List<MapAffixRuleGroup> AffixGroups { get; set; } = [];
+    public List<MapBorderRule> BorderRules { get; set; } = DefaultBorderRules();
 
     public void EnsureDefaults()
     {
+        TargetAffixCount.Value = Math.Clamp(TargetAffixCount.Value, TargetAffixCount.Min, TargetAffixCount.Max);
+        BorderThickness.Value = Math.Clamp(BorderThickness.Value, BorderThickness.Min, BorderThickness.Max);
+
         AffixGroups ??= [];
         foreach (var group in AffixGroups)
             group.EnsureDefaults();
-    }
-}
 
-public enum MapAffixGroupBadgeStyle
-{
-    TextCounts = 0,
-    OneBlockPerGroup = 1,
-    MatchedAffixBlocks = 2
+        BorderRules ??= [];
+        foreach (var rule in BorderRules)
+            rule.EnsureDefaults();
+    }
+
+    private static List<MapBorderRule> DefaultBorderRules()
+        =>
+        [
+            new()
+            {
+                Name = "Target affix count",
+                RequireTargetAffixCount = true,
+                Color = Color.DeepSkyBlue
+            }
+        ];
 }
 
 public sealed class MapAffixRuleGroup
@@ -92,6 +98,47 @@ public sealed class MapAffixRuleGroup
 
         SelectedAffixIds ??= [];
         SelectedAffixIds = SelectedAffixIds
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+}
+
+public sealed class MapBorderRule
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "New Border Rule";
+    public bool Enabled { get; set; } = true;
+    public bool RequireTargetAffixCount { get; set; }
+    public int MinimumMatches { get; set; } = 1;
+    public int ColorArgb { get; set; } = Color.DeepSkyBlue.ToArgb();
+    public List<string> SelectedGeneratedStatIds { get; set; } = [];
+    public List<string> SelectedAffixGroupIds { get; set; } = [];
+
+    [JsonIgnore]
+    public Color Color
+    {
+        get => Color.FromArgb(ColorArgb);
+        set => ColorArgb = value.ToArgb();
+    }
+
+    public void EnsureDefaults()
+    {
+        if (string.IsNullOrWhiteSpace(Id))
+            Id = Guid.NewGuid().ToString("N");
+        if (string.IsNullOrWhiteSpace(Name))
+            Name = "New Border Rule";
+        if (MinimumMatches < 1)
+            MinimumMatches = 1;
+
+        SelectedGeneratedStatIds ??= [];
+        SelectedGeneratedStatIds = SelectedGeneratedStatIds
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        SelectedAffixGroupIds ??= [];
+        SelectedAffixGroupIds = SelectedAffixGroupIds
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();

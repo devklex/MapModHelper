@@ -28,6 +28,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
     private readonly Dictionary<long, List<MapTooltipPropertyInfo>> _tooltipPropertyCache = new();
     private readonly Dictionary<string, string> _affixGroupSearch = new(StringComparer.Ordinal);
     private readonly HashSet<string> _newlyAddedAffixGroupsToOpen = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _newlyAddedBorderRulesToOpen = new(StringComparer.Ordinal);
     private MapStatData? _mapStatData;
     private MapItemReader? _itemReader;
     private MapScorer? _scorer;
@@ -116,9 +117,8 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
                 if (Settings.HideWhenTooltipOverItem.Value && ShouldHideOverlay(scored.Item, hoveredItem, tooltipRect))
                     continue;
 
-                var color = GetScoreColor(scored.Score);
                 if (scored.Score.HasBorderHighlight)
-                    DrawBorderHighlight(scored.Item.Rect, color, GetBorderThickness(scored.Score));
+                    DrawBorderHighlight(scored.Item.Rect, scored.Score.BorderColor, GetBorderThickness());
                 DrawBadges(scored.Item.Rect, scored.Score);
             }
 
@@ -146,42 +146,35 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
 
         Checkbox("Enable", Settings.Enable);
         Checkbox("Enable overlay", Settings.OverlayEnabled);
-        Checkbox("Highlight 8-affix maps", Settings.HighlightEightAffixMaps);
         Checkbox("Highlight selected generated map stats", Settings.HighlightImportantAffixes);
         ImGui.Indent();
-        Checkbox("Monster Effectiveness (E)", Settings.HighlightMonsterEffectiveness);
-        Checkbox("Item Rarity (R)", Settings.HighlightItemRarity);
-        Checkbox("Pack Size (P)", Settings.HighlightMonsterPackSize);
-        Checkbox("Monster Rarity (MR)", Settings.HighlightMonsterRarity);
-        Checkbox("Waystone Drop Chance (W)", Settings.HighlightWaystoneDropChance);
+        DrawGeneratedStatSetting("Monster Effectiveness (E)", Settings.HighlightMonsterEffectiveness, Settings.MonsterEffectivenessColor);
+        DrawGeneratedStatSetting("Item Rarity (R)", Settings.HighlightItemRarity, Settings.ItemRarityColor);
+        DrawGeneratedStatSetting("Pack Size (P)", Settings.HighlightMonsterPackSize, Settings.MonsterPackSizeColor);
+        DrawGeneratedStatSetting("Monster Rarity (MR)", Settings.HighlightMonsterRarity, Settings.MonsterRarityColor);
+        DrawGeneratedStatSetting("Waystone Drop Chance (W)", Settings.HighlightWaystoneDropChance, Settings.WaystoneDropChanceColor);
         ImGui.Unindent();
         Checkbox("Show affix-count badge", Settings.ShowAffixCountBadge);
         Checkbox("Show important-affix badges", Settings.ShowImportantAffixBadges);
         Checkbox("Hide overlay when item tooltip covers item", Settings.HideWhenTooltipOverItem);
-        Checkbox("Log matched maps", Settings.LogMatchedMaps);
-        Checkbox("Log scanned map samples", Settings.LogScannedMapSamples);
-        Checkbox("Log performance", Settings.LogPerformance);
-
-        ImGui.Separator();
-        if (ImGui.Button("Dump last hovered map stats"))
-            DumpLastHoveredMapDebug();
-        ImGui.SameLine();
-        if (ImGui.Button("Dump raw components"))
-            DumpLastHoveredMapRawComponents();
 
         ImGui.Separator();
         SliderInt("Scan interval ms", Settings.ScanIntervalMs);
         SliderInt("Target affix count", Settings.TargetAffixCount);
-        SliderInt("Blue max %", Settings.BlueMaxPercent);
-        SliderInt("Orange max %", Settings.OrangeMaxPercent);
-        SliderInt("Red min %", Settings.RedMinPercent);
-        SliderInt("Deep red min %", Settings.DeepRedMinPercent);
-        SliderInt("Base border thickness", Settings.BaseBorderThickness);
-        SliderInt("Max border thickness", Settings.MaxBorderThickness);
         SliderFloat("Badge scale", Settings.BadgeScale);
         ImGui.TextDisabled("Top-left: affix count. Top-right: selected generated stats: E, R, P, MR, W.");
         ImGui.Separator();
         DrawAffixGroupSettings();
+        DrawBorderRuleSettings();
+        DrawDebugSettings();
+        ImGui.Unindent();
+    }
+
+    private static void DrawGeneratedStatSetting(string label, ToggleNode enabled, ColorNode color)
+    {
+        Checkbox(label, enabled);
+        ImGui.Indent();
+        DrawColorEdit("Badge color##" + label, color.Value, value => color.Value = value);
         ImGui.Unindent();
     }
 
@@ -193,10 +186,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         ImGui.Indent();
         Checkbox("Enable affix group matching", Settings.EnableAffixGroups);
         Checkbox("Show affix group badges", Settings.ShowAffixGroupBadges);
-        DrawAffixGroupBadgeStyleSelector();
-        if ((MapAffixGroupBadgeStyle)Settings.AffixGroupBadgeStyle.Value == MapAffixGroupBadgeStyle.MatchedAffixBlocks)
-            SliderInt("Max group blocks per item", Settings.AffixGroupMaxBlocks);
-        ImGui.SameLine();
+
         if (ImGui.Button("Add Group"))
         {
             var group = new MapAffixRuleGroup
@@ -208,7 +198,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
             _newlyAddedAffixGroupsToOpen.Add(group.Id);
         }
 
-        ImGui.TextDisabled("Groups match selected affix families. Per-map values are shown separately by E/R/P/MR/W badges.");
+        ImGui.TextDisabled("Groups match selected affix families. Matching groups draw colored text badges.");
 
         if (Settings.AffixGroups.Count == 0)
             ImGui.TextDisabled("No groups yet. Add Group creates a custom affix badge rule.");
@@ -216,6 +206,55 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         for (var i = 0; i < Settings.AffixGroups.Count; i++)
             DrawAffixGroupEditor(i);
 
+        ImGui.Unindent();
+    }
+
+    private void DrawBorderRuleSettings()
+    {
+        if (!ImGui.CollapsingHeader($"Border Rules ({Settings.BorderRules.Count})###map_border_rules", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        ImGui.Indent();
+        Checkbox("Enable border rules", Settings.EnableBorderRules);
+        SliderInt("Border thickness", Settings.BorderThickness);
+        if (ImGui.Button("Add Border Rule"))
+        {
+            var rule = new MapBorderRule
+            {
+                Name = GetNextBorderRuleName(),
+                Color = DefaultGroupColor(Settings.AffixGroups.Count + Settings.BorderRules.Count)
+            };
+            Settings.BorderRules.Add(rule);
+            _newlyAddedBorderRulesToOpen.Add(rule.Id);
+        }
+
+        ImGui.TextDisabled("First matching border rule controls the outline color. Rules can combine target affix count, generated stats, and affix groups.");
+
+        if (Settings.BorderRules.Count == 0)
+            ImGui.TextDisabled("No border rules. Add Border Rule creates a custom outline rule.");
+
+        for (var i = 0; i < Settings.BorderRules.Count; i++)
+            DrawBorderRuleEditor(i);
+
+        ImGui.Unindent();
+    }
+
+    private void DrawDebugSettings()
+    {
+        if (!ImGui.CollapsingHeader("Debug / Logging###map_debug_logging"))
+            return;
+
+        ImGui.Indent();
+        Checkbox("Log matched maps", Settings.LogMatchedMaps);
+        Checkbox("Log scanned map samples", Settings.LogScannedMapSamples);
+        Checkbox("Log performance", Settings.LogPerformance);
+
+        ImGui.Separator();
+        if (ImGui.Button("Dump last hovered map stats"))
+            DumpLastHoveredMapDebug();
+        ImGui.SameLine();
+        if (ImGui.Button("Dump raw components"))
+            DumpLastHoveredMapRawComponents();
         ImGui.Unindent();
     }
 
@@ -331,6 +370,113 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
 
         ImGui.EndChild();
     }
+
+    private void DrawBorderRuleEditor(int index)
+    {
+        var rule = Settings.BorderRules[index];
+        rule.EnsureDefaults();
+
+        ImGui.PushID(rule.Id);
+        var selectedCount = CountBorderRuleSelections(rule);
+        var header = $"{rule.Name}  [{selectedCount} selected]";
+        if (_newlyAddedBorderRulesToOpen.Remove(rule.Id))
+            ImGui.SetNextItemOpen(true, ImGuiCond.Always);
+
+        if (ImGui.TreeNodeEx($"{header}###map_border_rule_editor", ImGuiTreeNodeFlags.None))
+        {
+            var enabled = rule.Enabled;
+            if (ImGui.Checkbox("Enabled", ref enabled))
+                rule.Enabled = enabled;
+
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Move Up") && index > 0)
+            {
+                (Settings.BorderRules[index - 1], Settings.BorderRules[index]) = (Settings.BorderRules[index], Settings.BorderRules[index - 1]);
+                ImGui.TreePop();
+                ImGui.PopID();
+                return;
+            }
+
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Move Down") && index < Settings.BorderRules.Count - 1)
+            {
+                (Settings.BorderRules[index + 1], Settings.BorderRules[index]) = (Settings.BorderRules[index], Settings.BorderRules[index + 1]);
+                ImGui.TreePop();
+                ImGui.PopID();
+                return;
+            }
+
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Delete"))
+            {
+                Settings.BorderRules.RemoveAt(index);
+                ImGui.TreePop();
+                ImGui.PopID();
+                return;
+            }
+
+            var name = rule.Name ?? string.Empty;
+            ImGui.SetNextItemWidth(260);
+            if (ImGui.InputText("Name", ref name, 96))
+                rule.Name = name;
+
+            var minimum = rule.MinimumMatches;
+            ImGui.SetNextItemWidth(90);
+            if (ImGui.InputInt("Minimum matched conditions", ref minimum, 1, 1))
+                rule.MinimumMatches = Math.Clamp(minimum, 1, 16);
+
+            DrawColorEdit("Border color", rule.Color, color => rule.Color = color);
+
+            var requireTargetAffixCount = rule.RequireTargetAffixCount;
+            if (ImGui.Checkbox($"Target affix count ({Settings.TargetAffixCount.Value}+)", ref requireTargetAffixCount))
+                rule.RequireTargetAffixCount = requireTargetAffixCount;
+
+            ImGui.TextDisabled("Generated stats");
+            ImGui.Indent();
+            foreach (var definition in MapStatData.GeneratedStatDefinitions)
+                DrawStringSelectionCheckbox($"{definition.BadgeLabel} - {definition.DisplayName}", rule.SelectedGeneratedStatIds, definition.StatId);
+            ImGui.Unindent();
+
+            ImGui.TextDisabled("Affix groups");
+            ImGui.Indent();
+            if (Settings.AffixGroups.Count == 0)
+            {
+                ImGui.TextDisabled("No affix groups yet.");
+            }
+            else
+            {
+                foreach (var group in Settings.AffixGroups)
+                    DrawStringSelectionCheckbox(group.Name, rule.SelectedAffixGroupIds, group.Id);
+            }
+            ImGui.Unindent();
+
+            ImGui.TreePop();
+        }
+
+        ImGui.PopID();
+    }
+
+    private static void DrawStringSelectionCheckbox(string label, List<string> selected, string value)
+    {
+        var isSelected = selected.Contains(value, StringComparer.OrdinalIgnoreCase);
+        if (!ImGui.Checkbox($"{label}##{value}", ref isSelected))
+            return;
+
+        if (isSelected)
+        {
+            if (!selected.Contains(value, StringComparer.OrdinalIgnoreCase))
+                selected.Add(value);
+        }
+        else
+        {
+            selected.RemoveAll(x => string.Equals(x, value, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private static int CountBorderRuleSelections(MapBorderRule rule)
+        => (rule.RequireTargetAffixCount ? 1 : 0)
+           + (rule.SelectedGeneratedStatIds?.Count ?? 0)
+           + (rule.SelectedAffixGroupIds?.Count ?? 0);
 
     private void ScanVisibleMaps()
     {
@@ -476,7 +622,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         var builder = new StringBuilder();
         builder.AppendLine($"[MapModHelper debug] {item.DisplayName} source={item.Source} key={key}");
         builder.AppendLine($"base='{item.BaseName}' class='{item.ClassName}' path='{item.Path}' rect={item.Rect}");
-        builder.AppendLine($"score affixes={score.ExplicitAffixCount} eight={score.HasEightAffixes} important={score.ImportantAffixCount} {FormatImportantStats(score)}");
+        builder.AppendLine($"score affixes={score.ExplicitAffixCount} target={score.HasTargetAffixCount} important={score.ImportantAffixCount} {FormatImportantStats(score)}");
         builder.AppendLine($"game data source='{_mapStatData?.SourcePath ?? "not loaded"}' trackedMods={_mapStatData?.LoadedModCount ?? 0}");
         builder.AppendLine("generated properties from mod stats:");
         if (item.GeneratedProperties.Count == 0)
@@ -889,22 +1035,16 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
     {
         var lineHeight = Math.Max(14f, 14f * Settings.BadgeScale.Value);
         var leftY = rect.Top + 2f;
-        var leftOccupied = new List<RectangleF>();
+        var occupied = new List<RectangleF>();
 
-        if (Settings.ShowAffixCountBadge.Value && score.HasEightAffixes)
+        if (Settings.ShowAffixCountBadge.Value && score.HasTargetAffixCount)
         {
-            leftOccupied.Add(DrawBadge(new Vector2(rect.Left + 2f, rect.Top + 2f), score.ExplicitAffixCount.ToString(), Settings.EightAffixColor.Value));
+            occupied.Add(DrawBadge(new Vector2(rect.Left + 2f, rect.Top + 2f), score.ExplicitAffixCount.ToString(), Settings.EightAffixColor.Value, Settings.EightAffixColor.Value));
             leftY += lineHeight + 2f;
         }
 
         if (Settings.ShowAffixGroupBadges.Value)
-        {
-            var style = (MapAffixGroupBadgeStyle)Math.Clamp(Settings.AffixGroupBadgeStyle.Value, Settings.AffixGroupBadgeStyle.Min, Settings.AffixGroupBadgeStyle.Max);
-            if (style == MapAffixGroupBadgeStyle.TextCounts)
-                DrawTextGroupBadges(rect, score.AffixGroupMatches, leftOccupied, ref leftY, lineHeight);
-            else
-                DrawBlockGroupBadges(rect, score.AffixGroupMatches, leftOccupied, ref leftY, style);
-        }
+            DrawTextGroupBadges(rect, score.AffixGroupMatches, occupied, ref leftY, lineHeight);
 
         if (!Settings.ShowImportantAffixBadges.Value)
             return;
@@ -914,9 +1054,11 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         {
             var label = $"{stat.BadgeLabel}{stat.Value}";
             var size = GetBadgeSize(label);
-            var position = FindRightBadgePosition(rect, size, y, leftOccupied);
-            DrawBadge(position, label, GetImportantValueColor(stat.Value));
-            y += lineHeight + 2f;
+            var position = FindRightBadgePosition(rect, size, y, occupied);
+            var color = GetGeneratedStatColor(stat.StatId);
+            var badge = DrawBadge(position, label, color, color);
+            occupied.Add(badge);
+            y = Math.Max(y + lineHeight + 2f, badge.Bottom + 2f);
         }
     }
 
@@ -927,46 +1069,9 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
             var label = groupMatch.BadgeLabel;
             var size = GetBadgeSize(label);
             var position = FindLeftBadgePosition(itemRect, size, leftY, occupied);
-            occupied.Add(DrawBadge(position, label, groupMatch.Color));
+            occupied.Add(DrawBadge(position, label, groupMatch.Color, groupMatch.Color));
             leftY = Math.Max(leftY + lineHeight + 2f, position.Y + size.Y + 2f);
         }
-    }
-
-    private void DrawBlockGroupBadges(RectangleF itemRect, IReadOnlyList<MapAffixGroupMatch> matches, List<RectangleF> occupied, ref float leftY, MapAffixGroupBadgeStyle style)
-    {
-        var blockSize = Math.Max(5f, 7f * Settings.BadgeScale.Value);
-        var gap = Math.Max(2f, 2f * Settings.BadgeScale.Value);
-        var x = itemRect.Left + 2f;
-        var y = leftY;
-        var maxBlocks = style == MapAffixGroupBadgeStyle.MatchedAffixBlocks
-            ? Math.Max(1, Settings.AffixGroupMaxBlocks.Value)
-            : int.MaxValue;
-        var drawn = 0;
-
-        foreach (var groupMatch in matches)
-        {
-            var blockCount = style == MapAffixGroupBadgeStyle.MatchedAffixBlocks
-                ? Math.Max(1, groupMatch.MatchedAffixes)
-                : 1;
-
-            for (var i = 0; i < blockCount && drawn < maxBlocks; i++)
-            {
-                if (x + blockSize > itemRect.Right - 2f)
-                {
-                    x = itemRect.Left + 2f;
-                    y += blockSize + gap;
-                }
-
-                var block = new RectangleF(x, y, blockSize, blockSize);
-                DrawGroupBlock(block, groupMatch.Color);
-                occupied.Add(block);
-                x += blockSize + gap;
-                drawn++;
-            }
-        }
-
-        if (drawn > 0)
-            leftY = y + blockSize + 2f;
     }
 
     private Vector2 FindLeftBadgePosition(RectangleF itemRect, Vector2 size, float y, IReadOnlyList<RectangleF> occupied)
@@ -985,14 +1090,14 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         return position;
     }
 
-    private Vector2 FindRightBadgePosition(RectangleF itemRect, Vector2 size, float y, IReadOnlyList<RectangleF> leftOccupied)
+    private Vector2 FindRightBadgePosition(RectangleF itemRect, Vector2 size, float y, IReadOnlyList<RectangleF> occupied)
     {
         var position = new Vector2(itemRect.Right - size.X - 2f, y);
         var attempts = 0;
         while (attempts++ < 16)
         {
             var candidate = new RectangleF(position.X, position.Y, size.X, size.Y);
-            if (!leftOccupied.Any(rect => Intersects(candidate, rect)))
+            if (!occupied.Any(rect => Intersects(candidate, rect)))
                 return position;
 
             position.Y += size.Y + 2f;
@@ -1001,13 +1106,10 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         return position;
     }
 
-    private void DrawGroupBlock(RectangleF block, Color color)
-    {
-        Graphics.DrawBox(block, color);
-        Graphics.DrawFrame(block, Settings.BadgeBackgroundColor.Value, 1);
-    }
-
     private RectangleF DrawBadge(Vector2 position, string label, Color frameColor)
+        => DrawBadge(position, label, frameColor, Settings.BadgeTextColor.Value);
+
+    private RectangleF DrawBadge(Vector2 position, string label, Color frameColor, Color textColor)
     {
         var size = GetBadgeSize(label);
         var width = size.X;
@@ -1016,7 +1118,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
 
         Graphics.DrawBox(badge, Settings.BadgeBackgroundColor.Value);
         Graphics.DrawFrame(badge, frameColor, 1);
-        Graphics.DrawText(label, new Vector2(position.X + 4f, position.Y + 1f), Settings.BadgeTextColor.Value);
+        Graphics.DrawText(label, new Vector2(position.X + 4f, position.Y + 1f), textColor);
         return badge;
     }
 
@@ -1037,38 +1139,31 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         Graphics.DrawFrame(scaledFrame, color, thickness);
     }
 
-    private Color GetScoreColor(MapScore score)
+    private Color GetGeneratedStatColor(string statId)
     {
-        if (score.ImportantAffixCount > 0)
-            return GetImportantValueColor(score.HighestImportantPercent);
+        if (string.Equals(statId, MapStatData.MonsterEffectivenessStat, StringComparison.OrdinalIgnoreCase))
+            return Settings.MonsterEffectivenessColor.Value;
+        if (string.Equals(statId, MapStatData.ItemRarityStat, StringComparison.OrdinalIgnoreCase))
+            return Settings.ItemRarityColor.Value;
+        if (string.Equals(statId, MapStatData.PackSizeStat, StringComparison.OrdinalIgnoreCase))
+            return Settings.MonsterPackSizeColor.Value;
+        if (string.Equals(statId, MapStatData.MonsterRarityStat, StringComparison.OrdinalIgnoreCase))
+            return Settings.MonsterRarityColor.Value;
+        if (string.Equals(statId, MapStatData.WaystoneDropChanceStat, StringComparison.OrdinalIgnoreCase))
+            return Settings.WaystoneDropChanceColor.Value;
 
-        return Settings.EightAffixColor.Value;
+        return Settings.BadgeTextColor.Value;
     }
 
-    private Color GetImportantValueColor(int value)
-    {
-        if (value >= Settings.DeepRedMinPercent.Value)
-            return Settings.BestImportantColor.Value;
-        if (value >= Settings.RedMinPercent.Value)
-            return Settings.HighImportantColor.Value;
-        if (value > Settings.BlueMaxPercent.Value && value <= Settings.OrangeMaxPercent.Value)
-            return Settings.MediumImportantColor.Value;
-        return Settings.LowImportantColor.Value;
-    }
-
-    private int GetBorderThickness(MapScore score)
-    {
-        var min = Math.Max(1, Settings.BaseBorderThickness.Value);
-        var max = Math.Max(min, Settings.MaxBorderThickness.Value);
-        if (score.ImportantAffixCount == 0)
-            return min;
-
-        return Math.Clamp(min + (int)MathF.Round(score.Intensity * (max - min)), min, max);
-    }
+    private int GetBorderThickness()
+        => Math.Max(1, Settings.BorderThickness.Value);
 
     private static float MapPriority(MapScore score)
     {
-        return score.ImportantAffixCount * 100f + score.Intensity * 50f + (score.HasEightAffixes ? 10f : 0f);
+        return score.BorderRuleMatches.Count * 200f
+               + score.ImportantAffixCount * 100f
+               + score.AffixGroupMatches.Count * 50f
+               + (score.HasTargetAffixCount ? 10f : 0f);
     }
 
     private static string FormatImportantStats(MapScore score)
@@ -1079,6 +1174,9 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
 
         if (score.AffixGroupMatches.Count > 0)
             parts.Add("groups=" + string.Join(", ", score.AffixGroupMatches.Select(match => $"{match.Name}:{match.BadgeLabel}")));
+
+        if (score.BorderRuleMatches.Count > 0)
+            parts.Add("borders=" + string.Join(", ", score.BorderRuleMatches.Select(match => $"{match.Name}:{match.MatchedConditions}/{match.SelectedConditions}")));
 
         return parts.Count == 0 ? "stats=none groups=none" : string.Join("; ", parts);
     }
@@ -1098,6 +1196,23 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         }
 
         return "New Group";
+    }
+
+    private string GetNextBorderRuleName()
+    {
+        var used = Settings.BorderRules
+            .Select(rule => rule.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 1; i < 1000; i++)
+        {
+            var name = $"Border Rule {i}";
+            if (!used.Contains(name))
+                return name;
+        }
+
+        return "New Border Rule";
     }
 
     private static Color DefaultGroupColor(int index)
@@ -1412,37 +1527,6 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         var value = node.Value;
         if (ImGui.SliderFloat(label, ref value, node.Min, node.Max))
             node.Value = value;
-    }
-
-    private void DrawAffixGroupBadgeStyleSelector()
-    {
-        var value = Math.Clamp(Settings.AffixGroupBadgeStyle.Value, Settings.AffixGroupBadgeStyle.Min, Settings.AffixGroupBadgeStyle.Max);
-        var preview = AffixGroupBadgeStyleLabel((MapAffixGroupBadgeStyle)value);
-        ImGui.SetNextItemWidth(190);
-        if (ImGui.BeginCombo("Group badge style", preview))
-        {
-            for (var i = Settings.AffixGroupBadgeStyle.Min; i <= Settings.AffixGroupBadgeStyle.Max; i++)
-            {
-                var style = (MapAffixGroupBadgeStyle)i;
-                var selected = value == i;
-                if (ImGui.Selectable(AffixGroupBadgeStyleLabel(style), selected))
-                    Settings.AffixGroupBadgeStyle.Value = i;
-                if (selected)
-                    ImGui.SetItemDefaultFocus();
-            }
-
-            ImGui.EndCombo();
-        }
-    }
-
-    private static string AffixGroupBadgeStyleLabel(MapAffixGroupBadgeStyle style)
-    {
-        return style switch
-        {
-            MapAffixGroupBadgeStyle.TextCounts => "Text counts",
-            MapAffixGroupBadgeStyle.MatchedAffixBlocks => "Block per matched affix",
-            _ => "Block per matched group"
-        };
     }
 
     private static bool DrawColorEdit(string label, Color color, Action<Color> setColor)
