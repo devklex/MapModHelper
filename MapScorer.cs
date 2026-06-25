@@ -39,11 +39,12 @@ internal sealed class MapScorer
             ? trackedAffixGroupMatches
             : [];
         var hasTargetAffixCount = affixCount >= settings.TargetAffixCount.Value;
+        var hasAffixCountBadge = settings.ShowAffixCountBadge.Value && hasTargetAffixCount;
         var borderRuleMatches = settings.EnableBorderRules.Value
             ? GetBorderRuleMatches(settings, hasTargetAffixCount, trackedStats, trackedAffixGroupMatches).ToList()
             : [];
 
-        if (!(settings.ShowAffixCountBadge.Value && hasTargetAffixCount)
+        if (!hasAffixCountBadge
             && importantStats.Count == 0
             && affixGroupMatches.Count == 0
             && borderRuleMatches.Count == 0)
@@ -52,6 +53,7 @@ internal sealed class MapScorer
         return new MapScore(
             affixCount,
             hasTargetAffixCount,
+            hasAffixCountBadge,
             importantStats,
             affixGroupMatches,
             borderRuleMatches);
@@ -282,12 +284,13 @@ internal sealed class MapScorer
 internal sealed record MapScore(
     int ExplicitAffixCount,
     bool HasTargetAffixCount,
+    bool HasAffixCountBadge,
     IReadOnlyList<MapImportantStatScore> ImportantStats,
     IReadOnlyList<MapAffixGroupMatch> AffixGroupMatches,
     IReadOnlyList<MapBorderRuleMatch> BorderRuleMatches)
 {
-    public static MapScore None { get; } = new(0, false, Array.Empty<MapImportantStatScore>(), Array.Empty<MapAffixGroupMatch>(), Array.Empty<MapBorderRuleMatch>());
-    public bool HasMatch => HasTargetAffixCount || ImportantStats.Count > 0 || AffixGroupMatches.Count > 0 || HasBorderHighlight;
+    public static MapScore None { get; } = new(0, false, false, Array.Empty<MapImportantStatScore>(), Array.Empty<MapAffixGroupMatch>(), Array.Empty<MapBorderRuleMatch>());
+    public bool HasMatch => HasAffixCountBadge || ImportantStats.Count > 0 || AffixGroupMatches.Count > 0 || HasBorderHighlight;
     public bool HasBorderHighlight => BorderRuleMatches.Count > 0;
     public System.Drawing.Color BorderColor => BorderRuleMatches.Count > 0 ? BorderRuleMatches[0].Color : System.Drawing.Color.Empty;
     public int ImportantAffixCount => ImportantStats.Count;

@@ -43,7 +43,7 @@ public sealed class MapModHelperSettings : ISettings
     public ColorNode BadgeTextColor { get; set; } = new(Color.White);
 
     public List<MapAffixRuleGroup> AffixGroups { get; set; } = [];
-    public List<MapBorderRule> BorderRules { get; set; } = DefaultBorderRules();
+    public List<MapBorderRule> BorderRules { get; set; } = [];
 
     public void EnsureDefaults()
     {
@@ -54,21 +54,35 @@ public sealed class MapModHelperSettings : ISettings
         foreach (var group in AffixGroups)
             group.EnsureDefaults();
 
-        BorderRules ??= [];
+        BorderRules = DeduplicateBorderRules(BorderRules ?? []);
         foreach (var rule in BorderRules)
             rule.EnsureDefaults();
     }
 
-    private static List<MapBorderRule> DefaultBorderRules()
-        =>
-        [
-            new()
-            {
-                Name = "Target affix count",
-                RequireTargetAffixCount = true,
-                Color = Color.DeepSkyBlue
-            }
-        ];
+    private static List<MapBorderRule> DeduplicateBorderRules(IEnumerable<MapBorderRule> rules)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<MapBorderRule>();
+
+        foreach (var rule in rules.Where(rule => rule != null))
+        {
+            rule.EnsureDefaults();
+            if (seen.Add(BorderRuleKey(rule)))
+                result.Add(rule);
+        }
+
+        return result;
+    }
+
+    private static string BorderRuleKey(MapBorderRule rule)
+        => string.Join("|",
+            rule.Name.Trim(),
+            rule.Enabled,
+            rule.RequireTargetAffixCount,
+            rule.MinimumMatches,
+            rule.ColorArgb,
+            string.Join(",", rule.SelectedGeneratedStatIds.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)),
+            string.Join(",", rule.SelectedAffixGroupIds.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)));
 }
 
 public sealed class MapAffixRuleGroup

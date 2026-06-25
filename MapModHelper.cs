@@ -156,7 +156,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         ImGui.Unindent();
         Checkbox("Show affix-count badge", Settings.ShowAffixCountBadge);
         ImGui.Indent();
-        DrawColorEdit("Affix-count badge color", Settings.AffixCountBadgeColor.Value, value => Settings.AffixCountBadgeColor.Value = value);
+        DrawColorEdit("Count badge color", Settings.AffixCountBadgeColor.Value, value => Settings.AffixCountBadgeColor.Value = value);
         ImGui.Unindent();
         Checkbox("Show important-affix badges", Settings.ShowImportantAffixBadges);
         Checkbox("Hide overlay when item tooltip covers item", Settings.HideWhenTooltipOverItem);
@@ -1040,7 +1040,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         var leftY = rect.Top + 2f;
         var occupied = new List<RectangleF>();
 
-        if (Settings.ShowAffixCountBadge.Value && score.HasTargetAffixCount)
+        if (score.HasAffixCountBadge)
         {
             occupied.Add(DrawBadge(new Vector2(rect.Left + 2f, rect.Top + 2f), score.ExplicitAffixCount.ToString(), Settings.AffixCountBadgeColor.Value, Settings.AffixCountBadgeColor.Value));
             leftY += lineHeight + 2f;
@@ -1109,9 +1109,6 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         return position;
     }
 
-    private RectangleF DrawBadge(Vector2 position, string label, Color frameColor)
-        => DrawBadge(position, label, frameColor, Settings.BadgeTextColor.Value);
-
     private RectangleF DrawBadge(Vector2 position, string label, Color frameColor, Color textColor)
     {
         var size = GetBadgeSize(label);
@@ -1166,7 +1163,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         return score.BorderRuleMatches.Count * 200f
                + score.ImportantAffixCount * 100f
                + score.AffixGroupMatches.Count * 50f
-               + (score.HasTargetAffixCount ? 10f : 0f);
+               + (score.HasAffixCountBadge ? 10f : 0f);
     }
 
     private static string FormatImportantStats(MapScore score)

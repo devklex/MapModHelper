@@ -46,6 +46,7 @@ AssertComputedStats(
 AssertHiddenBadgesDoNotCreateVisibleMatches();
 AssertBorderRulesCanUseHiddenGeneratedStats();
 AssertZeroAffixTargetCanCreateAffixCountMatches();
+AssertBorderRulesDoNotGrowOnEnsureDefaults();
 
 Console.WriteLine("MapModHelper generated stat tests passed.");
 
@@ -140,5 +141,32 @@ static void AssertZeroAffixTargetCanCreateAffixCountMatches()
 
     var score = new MapScorer().Score(item, settings);
     Require(score.HasTargetAffixCount, "A target affix count of 0 should match zero-affix maps.");
+    Require(score.HasAffixCountBadge, "A visible affix-count badge should be tracked separately from the target-count condition.");
     Require(score.HasMatch, "Visible affix-count badges should create a match when the configured target is met.");
+}
+
+static void AssertBorderRulesDoNotGrowOnEnsureDefaults()
+{
+    var settings = new MapModHelperSettings();
+    Require(settings.BorderRules.Count == 0, "Border rules should not be created by the settings constructor.");
+
+    settings.BorderRules =
+    [
+        new MapBorderRule
+        {
+            Name = "Target affix count",
+            RequireTargetAffixCount = true,
+            Color = Color.DeepSkyBlue
+        },
+        new MapBorderRule
+        {
+            Name = "Target affix count",
+            RequireTargetAffixCount = true,
+            Color = Color.DeepSkyBlue
+        }
+    ];
+
+    settings.EnsureDefaults();
+    settings.EnsureDefaults();
+    Require(settings.BorderRules.Count == 1, "EnsureDefaults should remove duplicate border rules and should not create new ones on reload.");
 }
