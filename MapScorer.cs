@@ -13,7 +13,8 @@ internal sealed class MapScorer
     public MapScore Score(MapItemSnapshot item, MapModHelperSettings settings)
     {
         var affixCount = item.ExplicitAffixCount > 0 ? item.ExplicitAffixCount : CountFallbackAffixLines(item.ModLines);
-        var displayedStatDefinitions = settings.HighlightImportantAffixes.Value
+        var showGeneratedStatBadges = settings.HighlightImportantAffixes.Value && settings.ShowImportantAffixBadges.Value;
+        var displayedStatDefinitions = showGeneratedStatBadges
             ? GetEnabledImportantStats(settings).ToList()
             : [];
         var displayedStatIds = displayedStatDefinitions
@@ -31,15 +32,21 @@ internal sealed class MapScorer
         var importantStats = trackedStats
             .Where(stat => displayedStatIds.Contains(stat.StatId))
             .ToList();
-        var affixGroupMatches = settings.EnableAffixGroups.Value && settings.AffixGroups.Count > 0
+        var trackedAffixGroupMatches = settings.EnableAffixGroups.Value && settings.AffixGroups.Count > 0
             ? GetAffixGroupMatches(item, settings).ToList()
+            : [];
+        var affixGroupMatches = settings.ShowAffixGroupBadges.Value
+            ? trackedAffixGroupMatches
             : [];
         var hasTargetAffixCount = affixCount >= settings.TargetAffixCount.Value;
         var borderRuleMatches = settings.EnableBorderRules.Value
-            ? GetBorderRuleMatches(settings, hasTargetAffixCount, trackedStats, affixGroupMatches).ToList()
+            ? GetBorderRuleMatches(settings, hasTargetAffixCount, trackedStats, trackedAffixGroupMatches).ToList()
             : [];
 
-        if (!hasTargetAffixCount && importantStats.Count == 0 && affixGroupMatches.Count == 0 && borderRuleMatches.Count == 0)
+        if (!(settings.ShowAffixCountBadge.Value && hasTargetAffixCount)
+            && importantStats.Count == 0
+            && affixGroupMatches.Count == 0
+            && borderRuleMatches.Count == 0)
             return MapScore.None;
 
         return new MapScore(

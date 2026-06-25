@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using MapModHelper;
 
@@ -42,6 +43,10 @@ AssertComputedStats(
         [MapStatData.MonsterRarityStat] = 25
     });
 
+AssertHiddenBadgesDoNotCreateVisibleMatches();
+AssertBorderRulesCanUseHiddenGeneratedStats();
+AssertZeroAffixTargetCanCreateAffixCountMatches();
+
 Console.WriteLine("MapModHelper generated stat tests passed.");
 
 static void AssertComputedStats(MapStatData data, MapExplicitModInfo mod, IReadOnlyDictionary<string, int> expected)
@@ -63,4 +68,77 @@ static void Require(bool condition, string message)
 {
     if (!condition)
         throw new InvalidOperationException(message);
+}
+
+static void AssertHiddenBadgesDoNotCreateVisibleMatches()
+{
+    var settings = new MapModHelperSettings();
+    settings.ShowAffixCountBadge.Value = false;
+    settings.HighlightImportantAffixes.Value = true;
+    settings.ShowImportantAffixBadges.Value = false;
+    settings.EnableAffixGroups.Value = false;
+    settings.EnableBorderRules.Value = false;
+
+    var item = new MapItemSnapshot
+    {
+        ExplicitAffixCount = 8,
+        GeneratedProperties =
+        [
+            new MapGeneratedPropertyInfo("Monster Effectiveness", MapStatData.MonsterEffectivenessStat, 30)
+        ]
+    };
+
+    var score = new MapScorer().Score(item, settings);
+    Require(!score.HasMatch, "Hidden affix-count and generated-stat badges should not create a visible match by themselves.");
+}
+
+static void AssertBorderRulesCanUseHiddenGeneratedStats()
+{
+    var settings = new MapModHelperSettings();
+    settings.ShowAffixCountBadge.Value = false;
+    settings.HighlightImportantAffixes.Value = true;
+    settings.ShowImportantAffixBadges.Value = false;
+    settings.EnableAffixGroups.Value = false;
+    settings.EnableBorderRules.Value = true;
+    settings.BorderRules =
+    [
+        new MapBorderRule
+        {
+            Name = "Effectiveness border",
+            Color = Color.Red,
+            SelectedGeneratedStatIds = [MapStatData.MonsterEffectivenessStat]
+        }
+    ];
+
+    var item = new MapItemSnapshot
+    {
+        ExplicitAffixCount = 1,
+        GeneratedProperties =
+        [
+            new MapGeneratedPropertyInfo("Monster Effectiveness", MapStatData.MonsterEffectivenessStat, 30)
+        ]
+    };
+
+    var score = new MapScorer().Score(item, settings);
+    Require(score.HasBorderHighlight, "Border rules should still be able to use hidden generated-stat badge conditions.");
+    Require(score.BorderColor.ToArgb() == Color.Red.ToArgb(), "Border rule color should come from the first matching border rule.");
+}
+
+static void AssertZeroAffixTargetCanCreateAffixCountMatches()
+{
+    var settings = new MapModHelperSettings();
+    settings.TargetAffixCount.Value = 0;
+    settings.ShowAffixCountBadge.Value = true;
+    settings.HighlightImportantAffixes.Value = false;
+    settings.EnableAffixGroups.Value = false;
+    settings.EnableBorderRules.Value = false;
+
+    var item = new MapItemSnapshot
+    {
+        ExplicitAffixCount = 0
+    };
+
+    var score = new MapScorer().Score(item, settings);
+    Require(score.HasTargetAffixCount, "A target affix count of 0 should match zero-affix maps.");
+    Require(score.HasMatch, "Visible affix-count badges should create a match when the configured target is met.");
 }

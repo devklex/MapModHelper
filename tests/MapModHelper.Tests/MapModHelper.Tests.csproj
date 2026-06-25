@@ -8,4 +8,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\MapModHelper.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Reference Include="ExileCore2">
+      <HintPath>..\..\..\..\..\ExileCore2.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
 </Project>

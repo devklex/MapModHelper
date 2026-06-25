@@ -155,6 +155,9 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         DrawGeneratedStatSetting("Waystone Drop Chance (W)", Settings.HighlightWaystoneDropChance, Settings.WaystoneDropChanceColor);
         ImGui.Unindent();
         Checkbox("Show affix-count badge", Settings.ShowAffixCountBadge);
+        ImGui.Indent();
+        DrawColorEdit("Affix-count badge color", Settings.AffixCountBadgeColor.Value, value => Settings.AffixCountBadgeColor.Value = value);
+        ImGui.Unindent();
         Checkbox("Show important-affix badges", Settings.ShowImportantAffixBadges);
         Checkbox("Hide overlay when item tooltip covers item", Settings.HideWhenTooltipOverItem);
 
@@ -1039,7 +1042,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
 
         if (Settings.ShowAffixCountBadge.Value && score.HasTargetAffixCount)
         {
-            occupied.Add(DrawBadge(new Vector2(rect.Left + 2f, rect.Top + 2f), score.ExplicitAffixCount.ToString(), Settings.EightAffixColor.Value, Settings.EightAffixColor.Value));
+            occupied.Add(DrawBadge(new Vector2(rect.Left + 2f, rect.Top + 2f), score.ExplicitAffixCount.ToString(), Settings.AffixCountBadgeColor.Value, Settings.AffixCountBadgeColor.Value));
             leftY += lineHeight + 2f;
         }
 

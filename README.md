@@ -4,7 +4,7 @@ ExileCore2 plugin for highlighting Path of Exile 2 waystones in stash and invent
 
 ## Features
 
-- Highlights waystones with a configurable affix count, defaulting to 8 affixes.
+- Highlights waystones with a configurable affix count from 0-8, defaulting to 8 affixes.
 - Uses a bundled, self-contained `data/waystone_data.json` file for waystone affixes and generated stat mappings.
 - Optional badges for generated map stats:
   - `E` Monster Effectiveness
@@ -18,8 +18,8 @@ ExileCore2 plugin for highlighting Path of Exile 2 waystones in stash and invent
 
 ## Overlay Layout
 
-- Top-left badge: explicit affix count, shown when the waystone meets the configured affix-count target.
-- Top-right badges: selected generated map stats such as `E28` or `R42`.
+- Top-left badge: explicit affix count, shown when the waystone meets the configured affix-count target and colored by the affix-count badge setting.
+- Top-right badges: selected generated map stats such as `E28` or `R42`, colored by each generated stat setting.
 - Left-side badges: custom affix-group matches, colored by the group color.
 - Border color and thickness: driven by the first matching border rule.
 

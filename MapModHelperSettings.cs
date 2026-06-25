@@ -33,7 +33,7 @@ public sealed class MapModHelperSettings : ISettings
     public RangeNode<int> BorderThickness { get; set; } = new(3, 1, 12);
     public RangeNode<float> BadgeScale { get; set; } = new(0.9f, 0.5f, 1.8f);
 
-    public ColorNode EightAffixColor { get; set; } = new(Color.DeepSkyBlue);
+    public ColorNode AffixCountBadgeColor { get; set; } = new(Color.DeepSkyBlue);
     public ColorNode MonsterEffectivenessColor { get; set; } = new(Color.Red);
     public ColorNode ItemRarityColor { get; set; } = new(Color.Orange);
     public ColorNode MonsterPackSizeColor { get; set; } = new(Color.LimeGreen);
