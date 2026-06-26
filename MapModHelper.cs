@@ -170,6 +170,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         if (!string.IsNullOrWhiteSpace(_lastDiagnosticSummary))
             ImGui.TextDisabled(_lastDiagnosticSummary);
 
+        SectionSpacing(4f);
         Checkbox("Enable", Settings.Enable, "Master switch for the plugin.");
         Checkbox("Enable overlay", Settings.OverlayEnabled, "Draw MapModHelper highlights and badges. Scanning still stops when stash and inventory are closed.");
         Checkbox("Highlight selected map stats", Settings.HighlightImportantAffixes, "Draw top-right badges for the selected map stats below when a waystone has them. Border rules can still use their own selected map stat conditions even when these visible badges are off.");
@@ -180,20 +181,29 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         DrawGeneratedStatSetting("Monster Rarity (MR)", Settings.HighlightMonsterRarity, Settings.MonsterRarityColor);
         DrawGeneratedStatSetting("Waystone Drop Chance (W)", Settings.HighlightWaystoneDropChance, Settings.WaystoneDropChanceColor);
         ImGui.Unindent();
+        SectionSpacing(4f);
         Checkbox("Show affix-count badge", Settings.ShowAffixCountBadge, "Draw the top-left badge when the waystone has at least the configured target affix count. Set the target to 0, 1, or 2 to identify white and magic maps.");
         ImGui.Indent();
         DrawColorEdit("Badge color##AffixCount", Settings.AffixCountBadgeColor.Value, value => Settings.AffixCountBadgeColor.Value = value);
         ImGui.Unindent();
+        SectionSpacing(4f);
         Checkbox("Hide overlay when item tooltip covers item", Settings.HideWhenTooltipOverItem, "Hide a badge or border when the game tooltip overlaps that item so the tooltip remains readable.");
 
+        SectionSpacing(6f);
         ImGui.Separator();
+        SectionSpacing(4f);
         SliderInt("Scan interval ms", Settings.ScanIntervalMs, "How often visible stash and inventory items are rescanned while one of those windows is open. Higher values reduce work; lower values update sooner.");
         SliderInt("Target affix count", Settings.TargetAffixCount, "Minimum explicit affix count needed for the affix-count badge and for border rules that require target affix count.");
         SliderFloat("Badge scale", Settings.BadgeScale, "Size multiplier for overlay badge text and badge boxes.");
+        SectionSpacing(3f);
         ImGui.TextDisabled("Top-left: affix count. Top-right: selected map stats: E, R, P, MR, W.");
+        SectionSpacing(6f);
         ImGui.Separator();
+        SectionSpacing(6f);
         DrawAffixGroupSettings();
+        SectionSpacing(6f);
         DrawBorderRuleSettings();
+        SectionSpacing(6f);
         DrawDebugSettings();
         ImGui.Unindent();
     }
@@ -214,6 +224,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         ImGui.Indent();
         Checkbox("Enable affix group matching", Settings.EnableAffixGroups, "Evaluate the custom affix groups below against each waystone.");
         Checkbox("Show affix group badges", Settings.ShowAffixGroupBadges, "Draw left-side text-count badges for matching groups. Border rules can still use group matches while these visible badges are off.");
+        SectionSpacing(4f);
 
         if (ImGui.Button("Add Group"))
         {
@@ -226,13 +237,19 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
             _newlyAddedAffixGroupsToOpen.Add(group.Id);
         }
 
+        SectionSpacing(4f);
         ImGui.TextDisabled("Groups match selected affix families. Matching groups draw colored text badges.");
 
         if (Settings.AffixGroups.Count == 0)
             ImGui.TextDisabled("No groups yet. Add Group creates a custom affix badge rule.");
+        else
+            SectionSpacing(3f);
 
         for (var i = 0; i < Settings.AffixGroups.Count; i++)
+        {
             DrawAffixGroupEditor(i);
+            SectionSpacing(3f);
+        }
 
         ImGui.Unindent();
     }
@@ -245,6 +262,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         ImGui.Indent();
         Checkbox("Enable border rules", Settings.EnableBorderRules, "Draw a border around maps that match custom border rules. The first matching rule controls the outline color.");
         SliderInt("Border thickness", Settings.BorderThickness, "Pixel thickness for map border outlines.");
+        SectionSpacing(4f);
         if (ImGui.Button("Add Border Rule"))
         {
             var rule = new MapBorderRule
@@ -256,13 +274,19 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
             _newlyAddedBorderRulesToOpen.Add(rule.Id);
         }
 
+        SectionSpacing(4f);
         ImGui.TextDisabled("First matching border rule controls the outline color. Rules can combine target affix count, generated stats, and affix groups.");
 
         if (Settings.BorderRules.Count == 0)
             ImGui.TextDisabled("No border rules. Add Border Rule creates a custom outline rule.");
+        else
+            SectionSpacing(3f);
 
         for (var i = 0; i < Settings.BorderRules.Count; i++)
+        {
             DrawBorderRuleEditor(i);
+            SectionSpacing(3f);
+        }
 
         ImGui.Unindent();
     }
@@ -278,7 +302,9 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         Checkbox("Log performance", Settings.LogPerformance);
         Checkbox("Log scan/read exceptions", Settings.LogScanExceptions, "Use this while stress testing mass map slams. If a waystone changes while the plugin is reading it, the plugin logs a throttled diagnostic and skips that frame.");
 
+        SectionSpacing(4f);
         ImGui.Separator();
+        SectionSpacing(3f);
         if (ImGui.Button("Dump last hovered map stats"))
             DumpLastHoveredMapDebug();
         ImGui.SameLine();
@@ -331,6 +357,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
                 return;
             }
 
+            SectionSpacing(3f);
             var name = group.Name ?? string.Empty;
             ImGui.SetNextItemWidth(260);
             if (ImGui.InputText("Name", ref name, 96))
@@ -343,6 +370,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
             HelpMarker("How many selected affix families from this group must be present before the group badge or group-based border condition matches.");
 
             DrawColorEdit("Group color", group.Color, color => group.Color = color);
+            SectionSpacing(4f);
 
             var searchKey = group.Id;
             if (!_affixGroupSearch.TryGetValue(searchKey, out var search))
@@ -356,6 +384,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
             if (ImGui.SmallButton("Clear All"))
                 (group.SelectedAffixIds ??= []).Clear();
 
+            SectionSpacing(3f);
             DrawAffixSelectionList(group, search);
             ImGui.TreePop();
         }
@@ -445,6 +474,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
                 return;
             }
 
+            SectionSpacing(3f);
             var name = rule.Name ?? string.Empty;
             ImGui.SetNextItemWidth(260);
             if (ImGui.InputText("Name", ref name, 96))
@@ -457,12 +487,14 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
             HelpMarker("How many selected conditions in this border rule must match before the border is drawn. Conditions can be target affix count, selected map stats, or selected affix groups.");
 
             DrawColorEdit("Border color", rule.Color, color => rule.Color = color);
+            SectionSpacing(4f);
 
             var requireTargetAffixCount = rule.RequireTargetAffixCount;
             if (ImGui.Checkbox($"Target affix count ({Settings.TargetAffixCount.Value}+)", ref requireTargetAffixCount))
                 rule.RequireTargetAffixCount = requireTargetAffixCount;
             HelpMarker("Counts as one border condition when the waystone has at least the configured target affix count.");
 
+            SectionSpacing(4f);
             ImGui.TextDisabled("Map stats");
             HelpMarker("These are the top map stats computed from bundled waystone data. A selected stat matches when this waystone has a nonzero value for that stat.");
             ImGui.Indent();
@@ -470,6 +502,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
                 DrawStringSelectionCheckbox($"{definition.BadgeLabel} - {definition.DisplayName}", rule.SelectedGeneratedStatIds, definition.StatId);
             ImGui.Unindent();
 
+            SectionSpacing(4f);
             ImGui.TextDisabled("Affix groups");
             HelpMarker("A selected affix group matches this border rule when that group reaches its own minimum matched affix count.");
             ImGui.Indent();
@@ -1592,6 +1625,11 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         ImGui.TextDisabled("(?)");
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(text);
+    }
+
+    private static void SectionSpacing(float height = 6f)
+    {
+        ImGui.Dummy(new Vector2(0f, height));
     }
 
     private static bool DrawColorEdit(string label, Color color, Action<Color> setColor)
