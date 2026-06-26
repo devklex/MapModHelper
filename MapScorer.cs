@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text.RegularExpressions;
 
@@ -55,6 +56,7 @@ internal sealed class MapScorer
             hasAffixCountBadge,
             importantStats,
             affixGroupMatches,
+            trackedAffixGroupMatches,
             borderRuleMatches);
     }
 
@@ -69,6 +71,7 @@ internal sealed class MapScorer
 
             var matchedAffixes = 0;
             var selectedCount = 0;
+            var matchedAffixLabels = new List<string>();
             foreach (var affixId in group.SelectedAffixIds.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 var affix = MapAffixCatalog.Find(affixId);
@@ -77,11 +80,14 @@ internal sealed class MapScorer
 
                 selectedCount++;
                 if (mods.Any(affix.Matches))
+                {
                     matchedAffixes++;
+                    matchedAffixLabels.Add(affix.ShortLabel);
+                }
             }
 
             if (selectedCount > 0 && matchedAffixes >= group.MinimumMatchedAffixes)
-                yield return new MapAffixGroupMatch(group.Id, group.Name, group.Color, matchedAffixes, selectedCount);
+                yield return new MapAffixGroupMatch(group.Id, group.Name, group.Color, matchedAffixes, selectedCount, matchedAffixLabels);
         }
     }
 
@@ -113,12 +119,16 @@ internal sealed class MapScorer
 
             var selectedConditions = 0;
             var matchedConditions = 0;
+            var matchedConditionLabels = new List<MapRuleConditionMatch>();
 
             if (rule.RequireTargetAffixCount)
             {
                 selectedConditions++;
                 if (hasTargetAffixCount)
+                {
                     matchedConditions++;
+                    matchedConditionLabels.Add(new MapRuleConditionMatch($"Affix count {settings.TargetAffixCount.Value}+", settings.AffixCountBadgeColor.Value));
+                }
             }
 
             foreach (var statId in rule.SelectedGeneratedStatIds.Distinct(StringComparer.OrdinalIgnoreCase))
@@ -127,15 +137,23 @@ internal sealed class MapScorer
                     continue;
 
                 selectedConditions++;
-                if (trackedStats.Any(stat => string.Equals(stat.StatId, statId, StringComparison.OrdinalIgnoreCase)))
+                var matchedStat = trackedStats.FirstOrDefault(stat => string.Equals(stat.StatId, statId, StringComparison.OrdinalIgnoreCase));
+                if (matchedStat != null)
+                {
                     matchedConditions++;
+                    matchedConditionLabels.Add(new MapRuleConditionMatch($"{matchedStat.BadgeLabel}{matchedStat.Value} {matchedStat.Name}", GetStatColor(settings, statId)));
+                }
             }
 
             foreach (var groupId in rule.SelectedAffixGroupIds.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 selectedConditions++;
-                if (affixGroupMatches.Any(group => string.Equals(group.GroupId, groupId, StringComparison.OrdinalIgnoreCase)))
+                var matchedGroup = affixGroupMatches.FirstOrDefault(group => string.Equals(group.GroupId, groupId, StringComparison.OrdinalIgnoreCase));
+                if (matchedGroup != null)
+                {
                     matchedConditions++;
+                    matchedConditionLabels.Add(new MapRuleConditionMatch($"{matchedGroup.Name} {matchedGroup.BadgeLabel}", matchedGroup.Color));
+                }
             }
 
             if (selectedConditions == 0)
@@ -143,8 +161,24 @@ internal sealed class MapScorer
 
             var required = Math.Clamp(rule.MinimumMatches, 1, selectedConditions);
             if (matchedConditions >= required)
-                yield return new MapBorderRuleMatch(rule.Name, rule.Color, matchedConditions, selectedConditions);
+                yield return new MapBorderRuleMatch(rule.Name, rule.Color, matchedConditions, selectedConditions, matchedConditionLabels);
         }
+    }
+
+    private static Color GetStatColor(MapModHelperSettings settings, string statId)
+    {
+        if (string.Equals(statId, MapStatData.MonsterEffectivenessStat, StringComparison.OrdinalIgnoreCase))
+            return settings.MonsterEffectivenessColor.Value;
+        if (string.Equals(statId, MapStatData.ItemRarityStat, StringComparison.OrdinalIgnoreCase))
+            return settings.ItemRarityColor.Value;
+        if (string.Equals(statId, MapStatData.PackSizeStat, StringComparison.OrdinalIgnoreCase))
+            return settings.MonsterPackSizeColor.Value;
+        if (string.Equals(statId, MapStatData.MonsterRarityStat, StringComparison.OrdinalIgnoreCase))
+            return settings.MonsterRarityColor.Value;
+        if (string.Equals(statId, MapStatData.WaystoneDropChanceStat, StringComparison.OrdinalIgnoreCase))
+            return settings.WaystoneDropChanceColor.Value;
+
+        return settings.BadgeTextColor.Value;
     }
 
     private static IEnumerable<MapGeneratedStatDefinition> GetEnabledImportantStats(MapModHelperSettings settings)
@@ -286,10 +320,12 @@ internal sealed record MapScore(
     bool HasAffixCountBadge,
     IReadOnlyList<MapImportantStatScore> ImportantStats,
     IReadOnlyList<MapAffixGroupMatch> AffixGroupMatches,
+    IReadOnlyList<MapAffixGroupMatch> TrackedAffixGroupMatches,
     IReadOnlyList<MapBorderRuleMatch> BorderRuleMatches)
 {
-    public static MapScore None { get; } = new(0, false, false, Array.Empty<MapImportantStatScore>(), Array.Empty<MapAffixGroupMatch>(), Array.Empty<MapBorderRuleMatch>());
+    public static MapScore None { get; } = new(0, false, false, Array.Empty<MapImportantStatScore>(), Array.Empty<MapAffixGroupMatch>(), Array.Empty<MapAffixGroupMatch>(), Array.Empty<MapBorderRuleMatch>());
     public bool HasMatch => HasAffixCountBadge || ImportantStats.Count > 0 || AffixGroupMatches.Count > 0 || HasBorderHighlight;
+    public bool HasAnyRuleMatch => HasMatch || TrackedAffixGroupMatches.Count > 0;
     public bool HasBorderHighlight => BorderRuleMatches.Count > 0;
     public System.Drawing.Color BorderColor => BorderRuleMatches.Count > 0 ? BorderRuleMatches[0].Color : System.Drawing.Color.Empty;
     public int ImportantAffixCount => ImportantStats.Count;
@@ -306,7 +342,8 @@ internal sealed record MapAffixGroupMatch(
     string Name,
     System.Drawing.Color Color,
     int MatchedAffixes,
-    int SelectedAffixes)
+    int SelectedAffixes,
+    IReadOnlyList<string> MatchedAffixLabels)
 {
     public string BadgeLabel => SelectedAffixes <= 1 ? MatchedAffixes.ToString() : $"{MatchedAffixes}/{SelectedAffixes}";
 }
@@ -315,4 +352,9 @@ internal sealed record MapBorderRuleMatch(
     string Name,
     System.Drawing.Color Color,
     int MatchedConditions,
-    int SelectedConditions);
+    int SelectedConditions,
+    IReadOnlyList<MapRuleConditionMatch> MatchedConditionLabels);
+
+internal sealed record MapRuleConditionMatch(
+    string Label,
+    System.Drawing.Color Color);

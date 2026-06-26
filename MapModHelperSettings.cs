@@ -23,6 +23,7 @@ public sealed class MapModHelperSettings : ISettings
     public ToggleNode EnableAffixGroups { get; set; } = new(true);
     public ToggleNode ShowAffixGroupBadges { get; set; } = new(true);
     public ToggleNode HideWhenTooltipOverItem { get; set; } = new(true);
+    public ToggleNode ShowHoverRuleBreakdown { get; set; } = new(true);
     public ToggleNode LogMatchedMaps { get; set; } = new(false);
     public ToggleNode LogScannedMapSamples { get; set; } = new(false);
     public ToggleNode LogPerformance { get; set; } = new(false);

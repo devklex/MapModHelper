@@ -22,6 +22,10 @@ namespace MapModHelper;
 public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
 {
     private const string PluginVersion = "v0.1";
+    private const int MaxHoverPanelLines = 18;
+
+    private sealed record TextSegment(string Text, Color Color);
+    private sealed record PanelLine(IReadOnlyList<TextSegment> Segments);
 
     private readonly Dictionary<long, ScoredVisibleMap> _visibleMaps = new();
     private readonly Dictionary<long, string> _suppressedEntityCells = new();
@@ -118,7 +122,8 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         var hoveredItem = ReadHoveredMap(out var tooltipRect);
         MaybeCacheHoveredProperties(hoveredItem);
         MaybeAddHoveredMapMatch(hoveredItem);
-        if (_visibleMaps.Count == 0)
+        var hoveredScore = TryGetHoveredMapScore(hoveredItem);
+        if (_visibleMaps.Count == 0 && hoveredScore?.HasAnyRuleMatch != true)
             return;
 
         IDisposable? textScaleScope = null;
@@ -153,6 +158,9 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         {
             textScaleScope?.Dispose();
         }
+
+        if (Settings.ShowHoverRuleBreakdown.Value && hoveredItem != null && hoveredScore?.HasAnyRuleMatch == true)
+            DrawHoverRuleBreakdownPanel(hoveredItem, hoveredScore, tooltipRect);
     }
 
     public override void DrawSettings()
@@ -188,6 +196,7 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
         ImGui.Unindent();
         SectionSpacing(4f);
         Checkbox("Hide overlay when item tooltip covers item", Settings.HideWhenTooltipOverItem, "Hide a badge or border when the game tooltip overlaps that item so the tooltip remains readable.");
+        Checkbox("Show hover rule breakdown", Settings.ShowHoverRuleBreakdown, "While hovering or controller-focusing a waystone, draw a compact panel listing which map stats, affix groups, and border-rule conditions matched.");
 
         SectionSpacing(6f);
         ImGui.Separator();
@@ -664,6 +673,20 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
             _visibleMaps[key] = new ScoredVisibleMap(hoveredItem, score);
     }
 
+    private MapScore? TryGetHoveredMapScore(MapItemSnapshot? hoveredItem)
+    {
+        if (hoveredItem == null || _scorer == null)
+            return null;
+
+        var key = GetEntityKey(hoveredItem);
+        if (_visibleMaps.TryGetValue(key, out var scored) && IsSameItemSnapshot(scored.Item, hoveredItem))
+            return scored.Score;
+
+        ApplyCachedTooltipProperties(key, hoveredItem);
+        var score = _scorer.Score(hoveredItem, Settings);
+        return score.HasAnyRuleMatch ? score : null;
+    }
+
     private void ApplyCachedTooltipProperties(long key, MapItemSnapshot item)
     {
         if (item.TooltipProperties.Count > 0)
@@ -1097,6 +1120,175 @@ public sealed class MapModHelper : BaseSettingsPlugin<MapModHelperSettings>
 
         return 0;
     }
+
+    private void DrawHoverRuleBreakdownPanel(MapItemSnapshot item, MapScore score, RectangleF? tooltipRect)
+    {
+        var lines = BuildHoverRuleBreakdownLines(item, score);
+        if (lines.Count == 0)
+            return;
+
+        var lineHeight = ImGui.GetTextLineHeight();
+        var width = Math.Clamp(lines.Max(MeasureLineWidth) + 16f, 250f, 560f);
+        var height = lines.Count * lineHeight + 12f;
+        var box = PickHoverPanelRect(item.Rect, tooltipRect, width, height);
+
+        Graphics.DrawBox(box, Color.FromArgb(225, 0, 0, 0));
+        Graphics.DrawFrame(box, Color.FromArgb(180, 180, 180, 180), 1);
+
+        for (var i = 0; i < lines.Count; i++)
+            DrawPanelLine(lines[i], new Vector2(box.X + 8f, box.Y + 6f + i * lineHeight));
+    }
+
+    private List<PanelLine> BuildHoverRuleBreakdownLines(MapItemSnapshot item, MapScore score)
+    {
+        var lines = new List<PanelLine>();
+        AddPanelLine(lines, Line(Segment("MAP MOD HELPER", Color.Gold), Segment(" rule matches", MutedTextColor())));
+        AddPanelLine(lines, Line(Segment(item.DisplayName, Color.White)));
+
+        if (score.HasTargetAffixCount)
+            AddPanelLine(lines, Line(Segment("Affixes: ", MutedTextColor()), Segment($"{score.ExplicitAffixCount}/{Settings.TargetAffixCount.Value}", Settings.AffixCountBadgeColor.Value)));
+
+        if (score.ImportantStats.Count > 0)
+        {
+            AddPanelLine(lines, Line(Segment("Map stats", HeaderTextColor())));
+            foreach (var stat in score.ImportantStats)
+            {
+                var color = GetGeneratedStatColor(stat.StatId);
+                AddPanelLine(lines, Line(Segment($"  {stat.BadgeLabel}{stat.Value} {stat.Name}", color)));
+            }
+        }
+
+        var groupMatches = score.TrackedAffixGroupMatches.Count > 0
+            ? score.TrackedAffixGroupMatches
+            : score.AffixGroupMatches;
+        if (groupMatches.Count > 0)
+        {
+            AddPanelLine(lines, Line(Segment("Affix groups", HeaderTextColor())));
+            foreach (var group in groupMatches)
+            {
+                AddPanelLine(lines, Line(Segment($"  {group.Name} {group.BadgeLabel}", group.Color)));
+                foreach (var affixLabel in group.MatchedAffixLabels.Take(4))
+                    AddPanelLine(lines, Line(Segment($"    + {affixLabel}", group.Color)));
+                if (group.MatchedAffixLabels.Count > 4)
+                    AddPanelLine(lines, Line(Segment($"    + {group.MatchedAffixLabels.Count - 4} more", group.Color)));
+            }
+        }
+
+        if (score.BorderRuleMatches.Count > 0)
+        {
+            AddPanelLine(lines, Line(Segment("Border rules", HeaderTextColor())));
+            foreach (var rule in score.BorderRuleMatches)
+            {
+                AddPanelLine(lines, Line(Segment($"  {rule.Name} {rule.MatchedConditions}/{rule.SelectedConditions}", rule.Color)));
+                foreach (var condition in rule.MatchedConditionLabels.Take(5))
+                    AddPanelLine(lines, Line(Segment($"    + {condition.Label}", condition.Color)));
+                if (rule.MatchedConditionLabels.Count > 5)
+                    AddPanelLine(lines, Line(Segment($"    + {rule.MatchedConditionLabels.Count - 5} more", rule.Color)));
+            }
+        }
+
+        return lines;
+    }
+
+    private static void AddPanelLine(List<PanelLine> lines, PanelLine line)
+    {
+        if (lines.Count < MaxHoverPanelLines)
+        {
+            lines.Add(line);
+            return;
+        }
+
+        var more = Line(Segment("... more matches", MutedTextColor()));
+        if (lines.Count > 0 && lines[^1].Segments.Count == 1 && lines[^1].Segments[0].Text == "... more matches")
+            return;
+
+        lines[^1] = more;
+    }
+
+    private void DrawPanelLine(PanelLine line, Vector2 position)
+    {
+        var x = position.X;
+        foreach (var segment in line.Segments)
+        {
+            if (string.IsNullOrEmpty(segment.Text))
+                continue;
+
+            Graphics.DrawText(segment.Text, new Vector2(x, position.Y), segment.Color);
+            x += ImGui.CalcTextSize(segment.Text).X;
+        }
+    }
+
+    private static float MeasureLineWidth(PanelLine line)
+        => line.Segments.Sum(segment => ImGui.CalcTextSize(segment.Text).X);
+
+    private RectangleF PickHoverPanelRect(RectangleF itemRect, RectangleF? tooltipRect, float width, float height)
+    {
+        var display = ImGui.GetIO().DisplaySize;
+        var anchor = tooltipRect ?? itemRect;
+        const float pad = 10f;
+
+        if (tooltipRect.HasValue)
+        {
+            var aboveTooltip = ClampToDisplay(new RectangleF(tooltipRect.Value.X, tooltipRect.Value.Y - height - pad, width, height));
+            if (!Intersects(aboveTooltip, tooltipRect.Value))
+                return aboveTooltip;
+
+            var belowTooltip = ClampToDisplay(new RectangleF(tooltipRect.Value.X, tooltipRect.Value.Bottom + pad, width, height));
+            if (!Intersects(belowTooltip, tooltipRect.Value))
+                return belowTooltip;
+        }
+
+        var candidates = new[]
+        {
+            new RectangleF(anchor.X, anchor.Y - height - pad, width, height),
+            new RectangleF(anchor.X, anchor.Bottom + pad, width, height),
+            new RectangleF(anchor.Right + pad, anchor.Y, width, height),
+            new RectangleF(anchor.X - width - pad, anchor.Y, width, height),
+            new RectangleF(8f, 8f, width, height),
+            new RectangleF(display.X - width - 8f, 8f, width, height),
+            new RectangleF(8f, display.Y - height - 8f, width, height),
+            new RectangleF(display.X - width - 8f, display.Y - height - 8f, width, height)
+        };
+
+        foreach (var raw in candidates)
+        {
+            var candidate = ClampToDisplay(raw);
+            if (tooltipRect.HasValue && Intersects(candidate, tooltipRect.Value))
+                continue;
+            if (Intersects(candidate, itemRect))
+                continue;
+            return candidate;
+        }
+
+        foreach (var raw in candidates)
+        {
+            var candidate = ClampToDisplay(raw);
+            if (!tooltipRect.HasValue || !Intersects(candidate, tooltipRect.Value))
+                return candidate;
+        }
+
+        return ClampToDisplay(candidates[4]);
+    }
+
+    private static RectangleF ClampToDisplay(RectangleF rect)
+    {
+        var display = ImGui.GetIO().DisplaySize;
+        var x = Math.Clamp(rect.X, 0f, Math.Max(0f, display.X - rect.Width));
+        var y = Math.Clamp(rect.Y, 0f, Math.Max(0f, display.Y - rect.Height));
+        return new RectangleF(x, y, rect.Width, rect.Height);
+    }
+
+    private static PanelLine Line(params TextSegment[] segments)
+        => new(segments);
+
+    private static TextSegment Segment(string text, Color color)
+        => new(text, color);
+
+    private static Color HeaderTextColor()
+        => Color.FromArgb(230, 210, 220, 225);
+
+    private static Color MutedTextColor()
+        => Color.FromArgb(220, 170, 180, 190);
 
     private void DrawBadges(RectangleF rect, MapScore score)
     {
